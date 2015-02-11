@@ -1,102 +1,49 @@
 (ns vfsm.core
-  (:require [clojure.core.async :as async])
-  (:import [clojure.lang IDeref IRef IAtom PersistentHashMap]))
+  (:import [clojure.lang IDeref IRef IAtom]
+           (java.util UUID)))
 
-(defprotocol ISpec
-  (entry-actions [_ state])
-  (exit-actions  [_ state])
-  (input-actions [_ state])
-  (transitions   [_ state]))
+(defn- run-actions
+  ([rtdb spec actions event] (run-actions rtdb spec actions event identity))
+  ([rtdb spec actions event f]
+   {:pre [(#{:entry :exit :input} event)]}
+   ((->> (f (get-in spec [(:state rtdb) event]))
+         (map actions) (reduce comp))
+     rtdb)))
 
-(defprotocol IActions
-  (run [_ ids]))
+(defn- input [rtdb spec actions]
+  (run-actions rtdb spec actions :input
+               (partial keep (fn [[condition action]]
+                               (when (condition rtdb) action)))))
 
-(defprotocol IAutomaton
-  (start     [_])
-  (stop      [_])
-  (execute   [_ inputs])
-  (get-id    [_])
-  (get-state [_]))
+(defn- transit [rtdb spec actions]
+  (reduce
+    (fn [rtdb [condition next-state]]
+      (if (condition rtdb)
+        (reduced
+          (-> rtdb
+              (run-actions spec actions :exit)
+              (assoc :state next-state)
+              (run-actions spec actions :entry)
+              (transit spec actions)))
+        rtdb))
+    rtdb
+    (get-in spec [(:state rtdb) :transitions])))
 
-(defn- ensure-coll [x]
-  (when x (if (coll? x) x [x])))
+(defn- execute [rtdb spec actions]
+  (-> rtdb (input spec actions) (transit spec actions)))
 
-(extend-type PersistentArrayMap
-  ISpec
-  (entry-actions [this state] (get-in this [state :entry]))
-  (exit-actions  [this state] (get-in this [state :exit]))
-  (input-actions [this state] (partition 2 (get-in this [state :input])))
-  (transitions   [this state] (partition 2 (get-in this [state :transitions])))
-  IActions
-  (run [this ids]
-    {:pre [(every? (partial contains? this) (ensure-coll ids))]}
-    (doseq [id (ensure-coll ids)] ((get this id)))))
+(defn- execute! [rtdb spec actions]
+  (swap! rtdb #(execute (vary-meta % assoc :rtdb/source rtdb) spec actions)))
 
-(defn- run-input-actions [spec actions state inputs]
-  (doseq [[condition action-ids] (input-actions spec @state)]
-    (when (condition inputs)
-      (run actions action-ids))))
+(defn start [rtdb spec actions]
+  {:pre [(instance? IRef rtdb) (instance? IAtom rtdb) (instance? IDeref rtdb)
+         (map? spec) (map? actions)]}
+  (let [id (str (UUID/randomUUID))]
+    (swap! rtdb update-in [:state] #(or % :init))
+    (let [f #(execute! rtdb spec actions)]
+      (add-watch rtdb id #(when-not (= %3 %4) (f)))
+      (f))
+    id))
 
-(defn- do-transitions [spec actions state inputs]
-  (when-let
-    [next-state
-     (some->>
-       (transitions spec @state)
-       (drop-while (fn [[c _]] (not (c inputs))))
-       first
-       second)]
-    (run actions (exit-actions spec @state))
-    (reset! state next-state)
-    (run actions (entry-actions spec @state))
-    (do-transitions spec actions state inputs)))
-
-(deftype Automaton [id spec actions state prev-inputs queue]
-  IAutomaton
-  (get-id [_] id)
-  (get-state [_] @state)
-  (start [this]
-    (when (nil? queue)
-      (let [queue (async/chan (async/sliding-buffer 1))]
-        (set! (.queue this) queue)
-        (async/go-loop []
-          (when-let [inputs (async/<! queue)]
-            (when-not (= @prev-inputs inputs)
-              (reset! prev-inputs inputs)
-              (run-input-actions spec actions state inputs)
-              (do-transitions spec actions state inputs))
-            (recur))))))
-  (execute [this inputs]
-    (if queue
-      (do
-        (async/put! queue inputs))
-  (stop [this]
-    (async/close! queue)
-    (set! (.queue this) nil))
-  IDeref
-  (deref [this] (get-state this))
-  Object
-  (toString [this] (str "Automaton: " (get-id this) "@" (get-state this))))
-
-(defmethod print-method Automaton
-  [v w]
-  (.write w (str v)))
-
-(defn- uuid-str []
-  (str (java.util.UUID/randomUUID)))
-
-(defn automaton [spec actions & [init-state]]
-  {:pre  [(satisfies? ISpec spec) (satisfies? IActions actions)]
-   :post [(satisfies? IAutomaton %)]}
-  (Automaton. (uuid-str) spec actions (atom (or init-state :init)) (atom nil) nil))
-
-(defn bind-inputs [automaton inputs]
-  {:pre [(satisfies? IAutomaton automaton)
-         (satisfies? IRef       inputs)
-         (satisfies? IDeref     inputs)]}
-  (start automaton)
-  (add-watch inputs (get-id automaton) #(execute automaton %4))
-  (execute automaton @inputs))
-
-(defn unbind-inputs [automaton inputs]
-  {:pre [(satisfies? IAutomaton automaton) (satisfies? IRef inputs)]}
-  (remove-watch inputs (get-id automaton)))
+(defn stop [rtdb id]
+  (remove-watch rtdb id))

@@ -2,17 +2,19 @@
   ;; using the sonatype repo is sometimes useful when testing Clojurescript / core.async
   ;; versions that not yet propagated to Clojars
   ;; :repositories #(conj % '["sonatype" {:url "http://oss.sonatype.org/content/repositories/releases"}])
-  :dependencies '[[org.clojure/core.async "0.1.346.0-17112a-alpha"]
-                  [org.clojure/clojure    "1.7.0-alpha5" :scope "provided"]
-                  [boot/core              "2.0.0-rc9"    :scope "provided"]
-                  [adzerk/boot-cljs       "0.0-2760-0"   :scope "test"]
-                  [adzerk/bootlaces       "0.1.10"       :scope "test"]])
+  :dependencies '[[org.clojure/clojure             "1.7.0-alpha5" :scope "provided"]
+                  [org.clojure/core.async          "0.1.346.0-17112a-alpha"]
+                  [com.github.kyleburton/clj-xpath "1.4.4"]
+                  [camel-snake-kebab               "0.3.0"]
+                  [instaparse                      "1.3.5"]
+                  [adzerk/boot-cljs                "0.0-2814-0"   :scope "test"]
+                  [adzerk/bootlaces                "0.1.10"       :scope "test"]])
 
 (require '[adzerk.bootlaces :refer :all])
 
 (def +version+ "0.1.0")
 
-(bootlaces! +version+ :dev-dependencies "vfsm/boot/pod_deps.edn")
+(bootlaces! +version+)
 
 (task-options!
   pom  {:project     'vfsm
