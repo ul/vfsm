@@ -1,6 +1,8 @@
 (ns vfsm.graphml
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
+            [clojure.pprint :as pp]
+            [boot.from.backtick :refer [template]]
             [camel-snake-kebab.core :refer [->kebab-case-keyword]]
             [clj-xpath.core :refer [$x xml->doc $x:text?]]
             [instaparse.core :as insta]))
@@ -8,6 +10,7 @@
 (def node-parser
   (insta/parser
     "<node> = state (<newline> spec)*
+     state = (wsnamespace '/')? wsname
      <spec> = entry|exit|input
      entry = <'E:'> (<space> action)+
      exit =  <'X:'> (<space> action)+
@@ -15,17 +18,22 @@
      <action> = symbol
      (* may be should ban arbitrary functions as conditions *)
      <condition> = #'[^\\n\\r]+?(?==>)'
-     (* digits at the beginning are allowed because
-        all symbols are converted in keywords *)
-     <namespace> = #'[\\p{IsAlphabetic}0-9_.?!*+-]+'
-     <name> = #'[\\p{IsAlphabetic}0-9_?!*+-]+'
+     <namespace> = #'\\p{IsAlphabetic}[\\p{IsAlphabetic}0-9_.?!*+-]*'
+     <name> = #'[\\p{IsAlphabetic}_?!*+-][\\p{IsAlphabetic}0-9_?!*+-]*'
      <symbol> = (namespace '/')? name
-     (* allow whitespace because state will be dasherized *)
+     (* allow whitespace because state will be dasherized,
+        allow digits etc. as first char because state will be keywordized *)
      <wsnamespace> = #'[ \\p{IsAlphabetic}0-9_.?!*+-]+'
      <wsname> = #'[ \\p{IsAlphabetic}0-9_?!*+-]+'
-     state = (wsnamespace '/')? wsname
-     newline = #'\\s+'
+     newline = #'\\s*[\\r\\n]+\\s*'
      space = #'[, \\t]+'"))
+
+(def edge-parser
+  (insta/parser
+    "<edge> = number <space> condition | !number condition
+     <number> = #'\\d+'
+     <condition> = #'.+'
+     space = #'\\s+'"))
 
 (defn- sanitize [xs]
   (->> xs
@@ -44,9 +52,9 @@
               (update-in m [t]
                          (fnil into [])
                          (if (= :input t)
-                           (map (fn [[c a]] [(read-string c) (keyword a)])
+                           (map (fn [[c a]] [(read-string c) (symbol a)])
                                 (partition 2 a))
-                           (map keyword a))))
+                           (map symbol a))))
              {} actions)]))
 
 (defn- process-nodes [doc]
@@ -59,14 +67,20 @@
 
 
 (defn- process-edges [doc nodes]
-  (reduce
-    (fn [m {:keys [text attrs]}]
-      (update-in m
-                 [(get-in nodes [(:source attrs) 0])]
-                 (fnil conj [])
-                 [(read-string text) (get-in nodes [(:target attrs) 0])]))
-    {}
-    (get-all-by-tag doc "edge")))
+  (->> (get-all-by-tag doc "edge")
+       (map (fn [i e]
+              (let [text (edge-parser (:text e))]
+                [(if (> (count text) 1) (Integer/parseInt (first text)) i)
+                 (assoc e :text (last text))]))
+            (range))
+       (sort-by first)
+       (reduce
+         (fn [m [_ {:keys [text attrs]}]]
+           (update-in m
+                      [(get-in nodes [(:source attrs) 0])]
+                      (fnil conj [])
+                      [(read-string text) (get-in nodes [(:target attrs) 0])]))
+         {})))
 
 (defn- make-spec [nodes edges]
   (reduce-kv
@@ -83,3 +97,14 @@
         nodes    (process-nodes doc)
         edges    (process-edges doc nodes)]
     (make-spec nodes edges)))
+
+(defn pp [form] (pp/write form :dispatch pp/code-dispatch))
+
+(defn forms-str [forms]
+  (str/join "\n" (map #(binding [*print-meta* true] (with-out-str (pp %))) forms)))
+
+(defn actions-stub [spec-path]
+  (->> spec-path io/resource slurp xml->doc process-nodes
+       (mapcat #(-> % second second vals)) flatten set
+       (map (fn [f] (template (defn ~f [ctx rtdb] rtdb))))
+       forms-str))

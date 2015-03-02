@@ -3,7 +3,6 @@
   ;; versions that not yet propagated to Clojars
   ;; :repositories #(conj % '["sonatype" {:url "http://oss.sonatype.org/content/repositories/releases"}])
   :dependencies '[[org.clojure/clojure             "1.7.0-alpha5" :scope "provided"]
-                  [org.clojure/core.async          "0.1.346.0-17112a-alpha"]
                   [com.github.kyleburton/clj-xpath "1.4.4"]
                   [camel-snake-kebab               "0.3.0"]
                   [instaparse                      "1.3.5"]
@@ -12,7 +11,7 @@
 
 (require '[adzerk.bootlaces :refer :all])
 
-(def +version+ "0.1.0")
+(def +version+ "0.1.0-SNAPSHOT")
 
 (bootlaces! +version+)
 

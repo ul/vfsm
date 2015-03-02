@@ -20,13 +20,14 @@ X: ... (3)
 I: condition1 => action1, condition2 => action2 (4)
 ```
 1. **state name,** will be dasherized to `:name-of-state`
-2. **entry action(s),** will be keywordized to `[:action1 :action2]`, commas are optional
+2. **entry action(s),** fn names, commas are optional
 3. **exit action(s),** the same as above
-4. **input action(s),** conditions must be functions of inputs, actions will be keywordized
+4. **input action(s),** conditions must be functions of inputs
 
 * Text of **edge label** represents **transition condition** from state to state.
 It must be a function of the one argument which is current inputs.
 Because inputs are usually a map, for simple checks you can benefit from the fact that Clojure keywords are functions.
+To check condition in specific order, put numbers before them.
 
 ##### Require vfsm:
 ```clojure
@@ -40,15 +41,16 @@ Because inputs are usually a map, for simple checks you can benefit from the fac
 ```
 
 ##### Put meaning into actions and start atomaton.
-Usually you want to provide a functions which will generate actions for the given context
-and bind given watchable inputs to automaton execution. Smth. like this:
+Usually you want to provide action functions in the same namespace where you compile spec.
+Actions must take to params: context and inputs.
+To bind given watchable inputs to automaton execution:
 ```clojure
-(vfsm/start rtdb spec actions)
+(vfsm/start rtdb spec context)
 ```
 
 ## TODO
 
-[ ] Explicit transitions traverse order
+[x] Explicit transitions traverse order
 
 [ ] More elegant input actions format
 
