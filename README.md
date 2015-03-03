@@ -2,7 +2,7 @@
 
 [](dependency)
 ```clojure
-[vfsm "0.1.0"] ;; latest release
+[vfsm "0.1.0-SNAPSHOT"] ;; latest release
 ```
 [](/dependency)
 
