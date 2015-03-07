@@ -32,7 +32,7 @@
   (insta/parser
     "<edge> = number <space> condition | !number condition
      <number> = #'\\d+'
-     <condition> = #'.+'
+     <condition> = #'(?s).+'
      space = #'\\s+'"))
 
 (defn- sanitize [xs]
@@ -91,20 +91,22 @@
                  actions)))
     {} nodes))
 
-(defmacro compile-spec [spec-path]
-  (let [f        (io/resource spec-path)
-        doc      (xml->doc (slurp f))
+(defn compile-spec* [f]
+  (let [doc      (xml->doc (slurp f))
         nodes    (process-nodes doc)
         edges    (process-edges doc nodes)]
     (make-spec nodes edges)))
+
+(defmacro compile-spec [f]
+  (compile-spec* f))
 
 (defn pp [form] (pp/write form :dispatch pp/code-dispatch))
 
 (defn forms-str [forms]
   (str/join "\n" (map #(binding [*print-meta* true] (with-out-str (pp %))) forms)))
 
-(defn actions-stub [spec-path]
-  (->> spec-path io/resource slurp xml->doc process-nodes
+(defn actions-stub [f]
+  (->> f slurp xml->doc process-nodes
        (mapcat #(-> % second second vals)) flatten set
-       (map (fn [f] (template (defn ~f [ctx rtdb] rtdb))))
+       (map (fn [f] (template (defn ~f [c d] d))))
        forms-str))
