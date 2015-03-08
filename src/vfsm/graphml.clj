@@ -100,6 +100,9 @@
 (defmacro compile-spec [f]
   (compile-spec* f))
 
+(defmacro compile-spec-from-resources [f]
+  (compile-spec* (io/resource f)))
+
 (defn pp [form] (pp/write form :dispatch pp/code-dispatch))
 
 (defn forms-str [forms]

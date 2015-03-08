@@ -2,11 +2,20 @@
   (:import [clojure.lang IDeref IRef IAtom]
            (java.util UUID)))
 
+(defn- ensure-coll [x]
+  (if (coll? x) x [x]))
+
+(defn- state-path [ctx]
+  (ensure-coll (get ctx :state-path :state)))
+
+(defn- state [rtdb ctx]
+  (get-in rtdb (state-path ctx)))
+
 (defn- run-actions
   ([rtdb spec ctx event] (run-actions rtdb spec ctx event identity))
   ([rtdb spec ctx event f]
    {:pre [(#{:entry :exit :input} event)]}
-   ((->> (get-in spec [(:state rtdb) event])
+   ((->> (get-in spec [(state rtdb ctx) event])
          f (map #(partial % ctx)) (reduce comp))
      rtdb)))
 
@@ -22,15 +31,18 @@
         (reduced
           (-> rtdb
               (run-actions spec ctx :exit)
-              (assoc :state next-state)
+              (assoc-in (state-path ctx) next-state)
               (run-actions spec ctx :entry)
               (transit spec ctx)))
         rtdb))
     rtdb
-    (get-in spec [(:state rtdb) :transitions])))
+    (get-in spec [(state rtdb ctx) :transitions])))
+
+(defn- ensure-state [rtdb ctx]
+  (update-in rtdb (state-path ctx) #(or % :init)))
 
 (defn execute [rtdb spec ctx]
-  (-> rtdb (input spec ctx) (transit spec ctx)))
+  (-> rtdb (ensure-state ctx) (input spec ctx) (transit spec ctx)))
 
 (defn execute! [rtdb spec ctx]
   (swap! rtdb #(execute (vary-meta % assoc :rtdb/source rtdb) spec ctx)))
@@ -39,7 +51,6 @@
   {:pre [(instance? IRef rtdb) (instance? IAtom rtdb) (instance? IDeref rtdb)
          (map? spec)]}
   (let [id (str (UUID/randomUUID))]
-    (swap! rtdb update-in [:state] #(or % :init))
     (let [f #(execute! rtdb spec ctx)]
       (add-watch rtdb id #(when-not (= %3 %4) (f)))
       (f))
