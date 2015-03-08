@@ -65,21 +65,20 @@
     {}
     (get-all-by-tag doc "node")))
 
+(defn aside [x] (println x) x)
 
 (defn- process-edges [doc nodes]
   (->> (get-all-by-tag doc "edge")
-       (map (fn [i e]
-              (let [text (edge-parser (:text e))]
-                [(if (> (count text) 1) (Integer/parseInt (first text)) i)
-                 (assoc e :text (last text))]))
-            (range))
-       (sort-by first)
        (reduce
-         (fn [m [_ {:keys [text attrs]}]]
+         (fn [m {:keys [text attrs]}]
+           (let [text (edge-parser text)
+                 i (if (> (count text) 1) (Integer/parseInt (first text)) 0)]
            (update-in m
                       [(get-in nodes [(:source attrs) 0])]
                       (fnil conj [])
-                      [(read-string text) (get-in nodes [(:target attrs) 0])]))
+                      [i
+                       (read-string (last text))
+                       (get-in nodes [(:target attrs) 0])])))
          {})))
 
 (defn- make-spec [nodes edges]
@@ -87,7 +86,8 @@
     (fn [m _ [state actions]]
       (assoc m state
                (if-let [t (get edges state)]
-                 (assoc actions :transitions t)
+                 (assoc actions :transitions
+                   (->> t (sort-by first) (map #(subvec % 1))))
                  actions)))
     {} nodes))
 
