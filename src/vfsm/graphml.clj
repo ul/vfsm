@@ -1,4 +1,5 @@
 (ns vfsm.graphml
+  (:refer-clojure :exclude [resolve])
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.pprint :as pp]
