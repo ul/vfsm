@@ -1,4 +1,18 @@
-(ns vfsm.core)
+(ns vfsm.core
+  #?(:clj (:import [clojure.lang IDeref IRef IAtom]
+                   (java.util UUID))))
+
+;;; Utils
+
+(defn- uuid-str []
+  #?(:clj
+     (str (UUID/randomUUID))
+     :cljs
+     (let [fs (fn [n] (apply str (repeatedly n (fn [] (.toString (rand-int 16) 16)))))
+           g (fn [] (.toString (bit-or 0x8 (bit-and 0x3 (rand-int 15))) 16))
+           sb (.append (goog.string.StringBuffer.)
+                       (fs 8) "-" (fs 4) "-4" (fs 3) "-" (g) (fs 3) "-" (fs 12))]
+       (.toString sb))))
 
 (defn- ensure-coll [x]
   (if (coll? x) x [x]))
@@ -8,6 +22,8 @@
 
 (defn- state [rtdb ctx]
   (get-in rtdb (state-path ctx)))
+
+;;; Pure FSM mechanics
 
 (defn- run-actions
   ([rtdb spec ctx event] (run-actions rtdb spec ctx event identity))
@@ -42,18 +58,18 @@
 (defn execute [rtdb spec ctx]
   (-> rtdb (ensure-state ctx) (input spec ctx) (transit spec ctx)))
 
+;;; Watch & update atom-like rtdb
+
 (defn execute! [rtdb spec ctx]
   (swap! rtdb #(execute (vary-meta % assoc :rtdb/source rtdb) spec ctx)))
 
-(defn- uuid-str []
-  (let [fs (fn [n] (apply str (repeatedly n (fn [] (.toString (rand-int 16) 16)))))
-        g  (fn [] (.toString (bit-or 0x8 (bit-and 0x3 (rand-int 15))) 16))
-        sb (.append (goog.string.StringBuffer.)
-                    (fs 8) "-" (fs 4) "-4" (fs 3) "-" (g) (fs 3) "-" (fs 12))]
-    (.toString sb)))
-
-(defn start [rtdb spec ctx]
-  {:pre [(satisfies? IWatchable rtdb) (satisfies? IDeref rtdb) (satisfies? ISwap rtdb)
+(defn start! [rtdb spec ctx]
+  {:pre [#?(:clj  (instance? IRef rtdb)
+                  (instance? IAtom rtdb)
+                  (instance? IDeref rtdb)
+            :cljs (satisfies? IWatchable rtdb)
+                  (satisfies? IDeref rtdb)
+                  (satisfies? ISwap rtdb))
          (map? spec)]}
   (let [id (uuid-str)]
     (let [f #(execute! rtdb spec ctx)]
@@ -61,5 +77,5 @@
       (f))
     id))
 
-(defn stop [rtdb id]
+(defn stop! [rtdb id]
   (remove-watch rtdb id))

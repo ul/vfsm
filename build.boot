@@ -1,13 +1,18 @@
+(def lein-proj 
+  (->> 
+    "project.clj" 
+    slurp 
+    read-string 
+    (drop 3) 
+    (partition 2) 
+    (map vec) 
+    (into {})))
+
 (set-env!
   ;; using the sonatype repo is sometimes useful when testing Clojurescript / core.async
   ;; versions that not yet propagated to Clojars
   ;; :repositories #(conj % '["sonatype" {:url "http://oss.sonatype.org/content/repositories/releases"}])
-  :dependencies '[[org.clojure/clojure             "1.7.0-alpha5" :scope "provided"]
-                  [com.github.kyleburton/clj-xpath "1.4.4"]
-                  [camel-snake-kebab               "0.3.0"]
-                  [instaparse                      "1.3.5"]
-                  [adzerk/boot-cljs                "0.0-2814-0"   :scope "test"]
-                  [adzerk/bootlaces                "0.1.10"       :scope "test"]])
+  :dependencies (into [] (:dependencies lein-proj)))
 
 (require '[adzerk.bootlaces :refer :all])
 

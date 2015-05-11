@@ -1,0 +1,7 @@
+/.hg
+/.idea
+/target
+/.lein-failures
+/.nrepl-history
+/.hgignore
+/*.iml

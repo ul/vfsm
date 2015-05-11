@@ -40,12 +40,12 @@ To check condition in specific order, put numbers before them.
 (def spec (compile-spec "path/to/your/spec/in/resources.graphml"))
 ```
 
-##### Put meaning into actions and start atomaton.
+##### Put meaning into actions and start automaton.
 Usually you want to provide action functions in the same namespace where you compile spec.
 Actions must take to params: context and inputs.
 To bind given watchable inputs to automaton execution:
 ```clojure
-(vfsm/start rtdb spec context)
+(vfsm/start! rtdb spec context)
 ```
 
 ## TODO
