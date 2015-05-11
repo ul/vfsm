@@ -64,12 +64,12 @@
   (swap! rtdb #(execute (vary-meta % assoc :rtdb/source rtdb) spec ctx)))
 
 (defn start! [rtdb spec ctx]
-  {:pre [#?(:clj  (instance? IRef rtdb)
-                  (instance? IAtom rtdb)
-                  (instance? IDeref rtdb)
-            :cljs (satisfies? IWatchable rtdb)
-                  (satisfies? IDeref rtdb)
-                  (satisfies? ISwap rtdb))
+  {:pre [#?@(:clj  [(instance? IRef rtdb)
+                    (instance? IAtom rtdb)
+                    (instance? IDeref rtdb)]
+             :cljs [(satisfies? IWatchable rtdb)
+                    (satisfies? IDeref rtdb)
+                    (satisfies? ISwap rtdb)])
          (map? spec)]}
   (let [id (uuid-str)]
     (let [f #(execute! rtdb spec ctx)]
