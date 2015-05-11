@@ -2,10 +2,69 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.pprint :as pp]
-            [boot.from.backtick :refer [template]]
             [camel-snake-kebab.core :refer [->kebab-case-keyword]]
             [clj-xpath.core :refer [$x xml->doc $x:text?]]
             [instaparse.core :as insta]))
+
+;;; from backtick
+
+(def ^:dynamic *resolve*)
+
+(def ^:dynamic ^:private *gensyms*)
+
+(defn- resolve [sym]
+  (let [ns (namespace sym)
+        n (name sym)]
+    (if (and (not ns) (= (last n) \#))
+      (if-let [gs (@*gensyms* sym)]
+        gs
+        (let [gs (gensym (str (subs n 0 (dec (count n))) "__auto__"))]
+          (swap! *gensyms* assoc sym gs)
+          gs))
+      (*resolve* sym))))
+
+(defn unquote? [form]
+  (and (seq? form) (= (first form) 'clojure.core/unquote)))
+
+(defn unquote-splicing? [form]
+  (and (seq? form) (= (first form) 'clojure.core/unquote-splicing)))
+
+(defn- quote-fn* [form]
+  (cond
+    (symbol? form) `'~(resolve form)
+    (unquote? form) (second form)
+    (unquote-splicing? form) (throw (Exception. "splice not in list"))
+    (record? form) `'~form
+    (coll? form)
+    (let [xs (if (map? form) (apply concat form) form)
+          parts (for [x xs]
+                  (if (unquote-splicing? x)
+                    (second x)
+                    [(quote-fn* x)]))
+          cat (doall `(concat ~@parts))]
+      (cond
+        (vector? form) `(vec ~cat)
+        (map? form) `(apply hash-map ~cat)
+        (set? form) `(set ~cat)
+        (seq? form) `(apply list ~cat)
+        :else (throw (Exception. "Unknown collection type"))))
+    :else `'~form))
+
+(defn quote-fn [resolver form]
+  (binding [*resolve* resolver
+            *gensyms* (atom {})]
+    (quote-fn* form)))
+
+(defmacro defquote [name resolver]
+  `(let [resolver# ~resolver]
+     (defn ~(symbol (str name "-fn")) [form#]
+       (quote-fn resolver# form#))
+     (defmacro ~name [form#]
+       (quote-fn resolver# form#))))
+
+(defquote template identity)
+
+;;; parser
 
 (def node-parser
   (insta/parser
@@ -87,6 +146,8 @@
                    (->> t (sort-by first) (mapv #(subvec % 1))))
                  actions)))
     {} nodes))
+
+;;; compiler
 
 (defn compile-spec* [f]
   (let [doc      (xml->doc (slurp f))
